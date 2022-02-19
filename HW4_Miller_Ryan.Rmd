@@ -36,6 +36,7 @@ easy to compare the raw signal from the final product in an interactive way.
 ## Load required libraries
 library(   hdf5r   )
 library(  plotly   )
+library(  pracma   )
 library(    psd    )
 library( tidyverse )
 library(  viridis  )
@@ -119,13 +120,13 @@ pd.raw <- data.frame( L1 = strain.l1[ idx ], H1 = strain.h1[ idx ],
 h.raw <- plot_ly( pd.raw, x = ~Time ) %>%
     add_lines( y = ~L1, name = 'L1' ) %>%
     add_lines( y = ~H1, name = 'H1' ) %>% rangeslider() %>% layout( hovermode = 'x' ) %>%
-    layout( title = 'Raw LIGO Strain Near GW150914',
+    layout( title = 'LIGO Raw Strain Near GW150914',
            xaxis = list( title = 'Time (s) since GW150914' ),
            yaxis = list( title = 'Strain' ) )
 
 h.raw
 ```
-```{r, message = FALSE}
+```{r, message = FALSE, echo = FALSE}
 ## Get spectral densities
 fs     <- 4096 # Sampling frequency
 psd.h1 <- psd::pspectrum( strain.h1, x.frqsamp = fs )
@@ -144,24 +145,37 @@ if( EVEN )
 {
     pos.freqs <- seq( from = 0, to = ( N / 2 - 1 ) / ( dt * N ), length.out = N/2)
     neg.freqs <- seq( from = -N/2 / (dt*N), to = -1 / (dt*N), length.out = N/2)
+    #freqs     <- seq( from = 0, to = 1 / (2*dt), length.out = floor( N/2 ) + 1 )
 }
 # Odd
 {
     pos.freqs <- seq( from = 0, to = ( (N-1)/2 / (dt*N) ), length.out = N/2 )
     neg.freqs <- seq( from = -((N-1)/2 / (dt*N)), to = -1 / (dt*N), length.out = N/2 )
+    #freqs     <- seq( from = 0, to = ( (N-1)/2 ) / (dt*N), length.out = floor( N/2 ) + 1 )
 }
-freqs <- c( pos.freqs, neg.freqs )
+freqs      <- c( pos.freqs, neg.freqs )
 
-## TODO: sqrt of negative frequencies figure this out.
 ## Whiten H1
-h1.fft <- fft( strain.h1 )
-h1.fft <- h1.fft / sqrt( freqs / dt / 2 )
-white.h1 <- fft( h1.fft, inverse = TRUE ) / length( h1.fft )
+div        <-  sqrt( pracma::interp1( psd.h1$freq, psd.h1$spec, abs(freqs) ) / dt / 2 )
+white.h1.f <- fft( strain.h1 ) / div
+white.h1   <- Re( fft( white.h1.f, inverse = TRUE ) / N )
 
 ## Whiten L1
-l1.fft <- fft( strain.l1 )
-l1.fft <- l1.fft / sqrt( freqs / dt / 2 )
-white.l1 <- fft( l1.fft, inverse = TRUE ) / length( l1.fft )
+div        <-  sqrt( pracma::interp1( psd.l1$freq, psd.l1$spec, abs(freqs) ) / dt / 2 )
+white.l1.f <- fft( strain.l1 ) / div
+white.l1   <- Re( fft( white.l1.f, inverse = TRUE ) / N )
+
+## Also have to do this for the relativistic model
+# TODO: You are here.
+
+# Shift by mean so they are both around zero, something. This is normally
+# handled by the whitening process with Real-FFT's, which are not implemented in R.
+white.h1 <- white.h1 - mean( white.h1 )
+white.l1 <- white.l1 - mean( white.l1 )
+# TODO: Also do for relativistic model
+
+```
+```{r, echo = FALSE}
 
 ## Plot the whitened signal
 pd.white <- data.frame( L1 = white.l1[ idx ], H1 = white.h1[ idx ],
@@ -169,12 +183,11 @@ pd.white <- data.frame( L1 = white.l1[ idx ], H1 = white.h1[ idx ],
 h.white <- plot_ly( pd.white, x = ~Time ) %>%
     add_lines( y = ~L1, name = 'L1' ) %>%
     add_lines( y = ~H1, name = 'H1' ) %>% rangeslider() %>% layout( hovermode = 'x' ) %>%
-    layout( title = 'Whitened LIGO Strain Near GW150914',
+    layout( title = 'LIGO Whitened Strain Near GW150914',
            xaxis = list( title = 'Time (s) since GW150914' ),
-           yaxis = list( title = 'Strain' ) )
+           yaxis = list( title = 'Whitened Strain' ) )
 
 h.white
-
 ```
 ```{r, echo = FALSE}
 
