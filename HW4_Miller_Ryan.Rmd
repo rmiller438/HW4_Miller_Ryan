@@ -1,0 +1,204 @@
+---
+title: "STAA 566 HW4"
+author: "Ryan Miller"
+output: html_document
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file,
+ encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
+---
+TODO: UPDATE
+\
+The data for this assignment was retrieved from the [Gravitational Wave Open Science
+Center](https://www.gw-openscience.org/). I chose this data because it is in
+HDF5 format, which I've never used in R before so I had to learn something new (in
+addition to the interactive plots!). The code will automatically download the data from
+the website, unless a local file path is provided to it.
+
+Working with the data does require the use of the `hdf5r` [package](https://cran.r-project.org/web/packages/hdf5r/index.html), which can be
+installed via the R terminal.
+
+The data is of the first observed gravitational wave which took place in September
+2015 and was produced by the merging of two black holes.
+Data is shown from each of the two detectors `L1` (Livingston) and `H1` (Hanford). More
+information can be found
+[here](https://www.gw-openscience.org/events/GW150914/#:~:text=The%20event%20occurred%20at%20GPS,Hanford%20and%20LIGO%20Livingston%20observatories.).
+This event is known as `GW150914`, which you will see in the plot titles and axes.
+
+You will notice in the plots that the signal is currently indistinguishable from the
+noise. The data needs to be processed in order for the signal to become clear, and it
+turned out that I will need more time to implement this. My plan is to finish the signal
+processing and include it in the shiny project. In that way the hope is that it will be
+easy to compare the raw signal from the final product in an interactive way.
+
+```{r, echo = FALSE, message = FALSE}
+## Load required libraries
+library(   hdf5r   )
+library(  plotly   )
+library(    psd    )
+library( tidyverse )
+library(  viridis  )
+
+## Clear function for ease (by default keeps all functions)
+# Optional input E - character array of exceptions
+# Optional input P - character array of inclusions
+clear <- function( all = FALSE, E = "", P = "" )
+{
+    # By default don't clear the loaded data unless intentionally cleared
+    if( ! all ){ E <- c( E, 'h1.5', 'l1.5', 'nrel' ) }
+
+    # Get list of functions and exclude anything in E
+    l <- setdiff( ls(envir=parent.frame()), c( lsf.str(envir=parent.frame()), E ) )
+
+    # Add P to the list.
+    if( all( P != "" ) ){ l <- c( l, P ) }
+
+    # Remove the stuff
+    rm( list = l, envir = parent.frame() )
+}
+
+## Clear things
+clear( )
+```
+```{r, echo = FALSE, results = 'hide', message = FALSE}
+
+#########################################################################################
+## Get the data
+#########################################################################################
+## Caution: Downloading data takes may take some time. Recommend that you only do this
+## once.
+#########################################################################################
+if( !exists( 'h1.5' ) | !exists( 'l1.5' )  | !exists( 'nrel' ) )
+{
+    ## Get strain data from H1 detector
+    h1.file.loc  <- 'https://losc.ligo.org/s/events/GW150914/H-H1_LOSC_4_V1-1126259446-32.hdf5'
+    h1.temp.file <- tempfile( fileext = '.hdf5' )
+    download.file( h1.file.loc, h1.temp.file )
+    h1.5    <- hdf5r::H5File$new( h1.temp.file, mode = 'r+' )
+    file.remove( h1.temp.file );
+    rm( list = c('h1.file.loc', 'h1.temp.file' ) )
+
+    ## Get strain data from L1 detector
+    l1.file.loc  <- 'https://losc.ligo.org/s/events/GW150914/L-L1_LOSC_4_V1-1126259446-32.hdf5'
+    l1.temp.file <- tempfile( fileext = '.hdf5' )
+    download.file( l1.file.loc, l1.temp.file )
+    l1.5    <- hdf5r::H5File$new( l1.temp.file, mode = 'r+' )
+    file.remove( l1.temp.file );
+    rm( list = c('l1.file.loc', 'l1.temp.file' ) )
+
+    ## Get numeric relativity template
+    nrel <- read_table( 'https://losc.ligo.org/s/events/GW150914/GW150914_4_NR_waveform.txt',
+                       col_names = FALSE )
+}
+```
+```{r, echo = FALSE}
+
+## Generate a time vector (in this data we know that H1 L1 are the same)
+dt        <- h5attr( h1.5[['/strain/Strain']], 'Xspacing' )
+gps.start <- h1.5[['/meta/GPSstart']][]
+gps.end   <- gps.start + length( h1.5[['/quality/injections/Injmask']][] )
+time      <- seq( from = gps.start, to = gps.end, by = dt )
+dt2       <- time[2] - time[1]; if( dt != dt2 ){ dt = dt2 }
+
+## Get the strain values for both detectors
+strain.h1 <- h1.5[['/strain/Strain']][]
+strain.l1 <- l1.5[['/strain/Strain']][]
+
+```
+```{r, echo = FALSE, fig.align = 'center'}
+
+## Recreate HW2 (raw signal plot)
+t.event <- 1126259462.422
+t.off   <- 5
+idx <- which( time >= t.event - t.off & time < t.event + t.off )
+
+## Set up the plotly functions
+pd.raw <- data.frame( L1 = strain.l1[ idx ], H1 = strain.h1[ idx ],
+                     Time = time[ idx ] - t.event )
+h.raw <- plot_ly( pd.raw, x = ~Time ) %>%
+    add_lines( y = ~L1, name = 'L1' ) %>%
+    add_lines( y = ~H1, name = 'H1' ) %>% rangeslider() %>% layout( hovermode = 'x' ) %>%
+    layout( title = 'Raw LIGO Strain Near GW150914',
+           xaxis = list( title = 'Time (s) since GW150914' ),
+           yaxis = list( title = 'Strain' ) )
+
+h.raw
+```
+```{r, message = FALSE}
+## Get spectral densities
+fs     <- 4096 # Sampling frequency
+psd.h1 <- psd::pspectrum( strain.h1, x.frqsamp = fs )
+psd.l1 <- psd::pspectrum( strain.l1, x.frqsamp = fs )
+
+## Whiten the signal
+if( ! ( length( strain.h1 ) - length( strain.l1 ) ) )
+{
+    # Will error out after this if N is undefined; i.e., the lengths are different
+    N    <- length( strain.h1 )
+    EVEN <- !psd::mod( N, 2 )
+}
+
+if( EVEN )
+# Even
+{
+    pos.freqs <- seq( from = 0, to = ( N / 2 - 1 ) / ( dt * N ), length.out = N/2)
+    neg.freqs <- seq( from = -N/2 / (dt*N), to = -1 / (dt*N), length.out = N/2)
+}
+# Odd
+{
+    pos.freqs <- seq( from = 0, to = ( (N-1)/2 / (dt*N) ), length.out = N/2 )
+    neg.freqs <- seq( from = -((N-1)/2 / (dt*N)), to = -1 / (dt*N), length.out = N/2 )
+}
+freqs <- c( pos.freqs, neg.freqs )
+
+## TODO: sqrt of negative frequencies figure this out.
+## Whiten H1
+h1.fft <- fft( strain.h1 )
+h1.fft <- h1.fft / sqrt( freqs / dt / 2 )
+white.h1 <- fft( h1.fft, inverse = TRUE ) / length( h1.fft )
+
+## Whiten L1
+l1.fft <- fft( strain.l1 )
+l1.fft <- l1.fft / sqrt( freqs / dt / 2 )
+white.l1 <- fft( l1.fft, inverse = TRUE ) / length( l1.fft )
+
+## Plot the whitened signal
+pd.white <- data.frame( L1 = white.l1[ idx ], H1 = white.h1[ idx ],
+                     Time = time[ idx ] - t.event )
+h.white <- plot_ly( pd.white, x = ~Time ) %>%
+    add_lines( y = ~L1, name = 'L1' ) %>%
+    add_lines( y = ~H1, name = 'H1' ) %>% rangeslider() %>% layout( hovermode = 'x' ) %>%
+    layout( title = 'Whitened LIGO Strain Near GW150914',
+           xaxis = list( title = 'Time (s) since GW150914' ),
+           yaxis = list( title = 'Strain' ) )
+
+h.white
+
+```
+```{r, echo = FALSE}
+
+#########################################################################################
+## Close all HDF5 stuff
+#########################################################################################
+#l1.5$close_all()
+#h1.5$close_all()
+```
+
+## Code
+
+```{r getlabs, results = 'hide', include = FALSE}
+## Get all the labels
+appLabs <- knitr::all_labels()
+appLabs <- setdiff( appLabs, c('getlabs', appLabs[grep("^hide", appLabs)]) )
+```
+
+```{r show-code, ref.label = appLabs, echo = TRUE, eval = FALSE}
+```
+
+## References
+A guide to LIGO-Virgo detector noise and extraction of transient gravitational-wave
+signals; https://arxiv.org/pdf/1908.11170.pdf
+
+Signal Processing with GW150914 Open Data;
+https://www.gw-openscience.org/GW150914data/GW150914_tutorial.html
