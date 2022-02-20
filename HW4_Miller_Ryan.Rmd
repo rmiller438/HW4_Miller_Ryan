@@ -8,29 +8,29 @@ knit: (function(input_file, encoding) {
  encoding=encoding,
  output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
 ---
-TODO: UPDATE
-\
 The data for this assignment was retrieved from the [Gravitational Wave Open Science
-Center](https://www.gw-openscience.org/). I chose this data because it is in
-HDF5 format, which I've never used in R before so I had to learn something new (in
-addition to the interactive plots!). The code will automatically download the data from
-the website, unless a local file path is provided to it.
-
-Working with the data does require the use of the `hdf5r` [package](https://cran.r-project.org/web/packages/hdf5r/index.html), which can be
-installed via the R terminal.
+Center](https://www.gw-openscience.org/).
 
 The data is of the first observed gravitational wave which took place in September
 2015 and was produced by the merging of two black holes.
-Data is shown from each of the two detectors `L1` (Livingston) and `H1` (Hanford). More
-information can be found
-[here](https://www.gw-openscience.org/events/GW150914/#:~:text=The%20event%20occurred%20at%20GPS,Hanford%20and%20LIGO%20Livingston%20observatories.).
+Data is shown from each of the two detectors `L1` (Livingston) and `H1` (Hanford) as well
+as from a theoretical numerical relativity model.
 This event is known as `GW150914`, which you will see in the plot titles and axes.
+More information about the event and the data itself can be found
+[here](https://www.gw-openscience.org/events/GW150914/#:~:text=The%20event%20occurred%20at%20GPS,Hanford%20and%20LIGO%20Livingston%20observatories.).
+For this project, the 32-second duration data was used at a sample rate of 4096 Hz.
 
-You will notice in the plots that the signal is currently indistinguishable from the
-noise. The data needs to be processed in order for the signal to become clear, and it
-turned out that I will need more time to implement this. My plan is to finish the signal
-processing and include it in the shiny project. In that way the hope is that it will be
-easy to compare the raw signal from the final product in an interactive way.
+I chose this data for several reasons. First, it is in
+HDF5 format, which I've never used in R before. Second, it required some signal processing
+which I've also never done in R before. Third, I enjoy Physics and I thought this was
+a cool project; it was challenging to get the data in and processed in R, and gave me
+a change to learn new skills in addition to the dynamic plotting.
+
+The code will automatically download all the data from the website. I may also use
+this homework in the shiny project (HW4), so any feedback on improvements is appreciated.
+
+The reference section at the bottom has more information, and is where the comments about
+the figures come from.
 
 ```{r, echo = FALSE, message = FALSE}
 ## Load required libraries
@@ -110,13 +110,22 @@ strain.nr <- nrel$X2
 time.nr   <- nrel$X1
 
 ```
+\
+\
+In the first figure we can see the raw strain signal from each of the detection sites.
+There is obvious low frequency content in the signals that are causing the means to be
+offset from one another. According to [2], we can ignore this low frequency content in
+analysis. The signal is contained in the higher frequencies, so we need to do a bit of
+signal processing on the data.
 ```{r, echo = FALSE, fig.align = 'center'}
 
-## Recreate HW2 (raw signal plot)
+## Raw signal plot
 t.event <- 1126259462.422
 t.off   <- 5
 idx     <- which( time >= t.event - t.off & time < t.event + t.off )
-idx   <- which( time >= t.event - 0.10 & time < t.event + 0.05 )
+idx     <- which( time >= t.event - 0.10 & time < t.event + 0.05 )
+t.nr    <- time.nr+0.002
+idx.nr  <- which( time.nr >= -0.10 & time.nr < 0.05 );
 
 ## Set up the plotly functions
 pd.raw <- data.frame( L1 = strain.l1[ idx ], H1 = strain.h1[ idx ],
@@ -174,7 +183,7 @@ n.freq     <- seq( from = -(n.nr-1) / 2, to = -1, by = 1 ) / ( dt * n.nr )
 freq       <- c( p.freq, n.freq )
 div        <-  sqrt( pracma::interp1( psd.h1$freq, psd.h1$spec, abs(freq) ) / dt / 2 )
 white.nr.f <- fft( strain.nr ) / div
-white.nr   <- Re( fft( white.nr.f, inverse = TRUE ) / N )
+white.nr   <- Re( fft( white.nr.f, inverse = TRUE ) / n.nr )
 
 # Shift by mean so they are both around zero, something. This is normally
 # handled by the whitening process with Real-FFT's, which are not implemented in R.
@@ -183,6 +192,13 @@ white.l1 <- white.l1 - mean( white.l1 )
 white.nr <- white.nr - mean( white.nr )
 
 ```
+\
+\
+The first step is to whiten the data to suppress noise. According to [2],
+"Whitening is always one of the first steps in astrophysical data analysis."
+
+The whitened data is in the following plot, note that the y-axis scale is now in standard
+deviations away from the mean.
 ```{r, echo = FALSE}
 
 ## Plot the whitened signal
@@ -201,9 +217,9 @@ h.white
 pd.nrWhite <- data.frame( NRwave = white.nr, Time = time.nr )
 h.nr.white <- ggplot( pd.nrWhite, aes( x = Time, y = NRwave ) ) +
     geom_line( col = 'red', lwd = 1) + theme_minimal()
-h.nr.white
+#h.nr.white
 ```
-```{r}
+```{r, echo = FALSE}
 
 ## Bandpass the data to remove the high frequency noise
 filt.coef  <- signal::butter( n = 4, W = c( 20 * 2 / fs, 300 * 2 / fs ), type = 'pass' )
@@ -215,30 +231,39 @@ whitebp.nr <- signal::filtfilt( filt.coef, white.nr )
 shift    <- as.integer( 0.007 * fs )
 shift.l1 <- -c( tail( whitebp.l1, shift ), head( whitebp.l1, -shift ) )
 ```
-```{r}
+\
+\
+After whitening, we get rid of the high frequency noise by filtering the signal. In
+addition to filtering, the L1 signal was shifted by 7 ms for alignment "because the source
+is roughly in the direction of the line connecting H1 to L1, and the wave travels at the
+speed of light, so it hits L1 7 ms earlier" [2]. We also had to correct for the
+orientation of the sensors by flipping one of the signs on the signals.
+```{r, echo = FALSE}
 
 ## Plot the final signals
 pd.whitebp <- data.frame( L1 = shift.l1[ idx ], H1 = whitebp.h1[ idx ],
                      Time = time[ idx ] - t.event )
+pd.nr <- data.frame( Time = t.nr[ idx.nr ], NR = whitebp.nr[ idx.nr ] )
 h.whitebp <- plot_ly( pd.whitebp, x = ~Time ) %>%
     add_lines( y = ~L1, name = 'L1' ) %>%
-    add_lines( y = ~H1, name = 'H1' ) %>% rangeslider() %>% layout( hovermode = 'x' ) %>%
-    layout( title = 'LIGO Whitened Strain Near GW150914',
-           xaxis = list( title = 'Time (s) since GW150914' ),
-           yaxis = list( title = 'Whitened Strain' ) )
+    add_lines( y = ~H1, name = 'H1' ) %>%
+    add_lines( data = pd.nr, x = ~Time, y = ~NR, opacity = 0.6, name = 'NR' ) %>%
+    rangeslider() %>% layout( hovermode = 'x' ) %>%
+    layout( title = 'LIGO Whitened+Filtered Strain Near GW150914',
+           xaxis = list( title = 'Time (s) since GW150914' , range = c(-0.10, 0.05)),
+           yaxis = list( title = 'Whitened+Filtered Strain' ) )
 
 h.whitebp
 
 ```
-```{r, echo = FALSE}
-
-#########################################################################################
-## Close all HDF5 stuff
-#########################################################################################
-#l1.5$close_all()
-#h1.5$close_all()
-```
-
+\
+The signal is now clear and aligns well with the theoretical waveform predicted by General
+Relativity, "It's exactly the kind of signal we expect from the inspiral, merger and
+ringdown of two massive black holes, as evidenced by the good match with the numerical
+relativity (NR) waveform" [2].
+\
+\
+\
 ## Code
 
 ```{r getlabs, results = 'hide', include = FALSE}
@@ -251,8 +276,8 @@ appLabs <- setdiff( appLabs, c('getlabs', appLabs[grep("^hide", appLabs)]) )
 ```
 
 ## References
-A guide to LIGO-Virgo detector noise and extraction of transient gravitational-wave
+[1] A guide to LIGO-Virgo detector noise and extraction of transient gravitational-wave
 signals; https://arxiv.org/pdf/1908.11170.pdf
 
-Signal Processing with GW150914 Open Data;
+[2] Signal Processing with GW150914 Open Data;
 https://www.gw-openscience.org/GW150914data/GW150914_tutorial.html
