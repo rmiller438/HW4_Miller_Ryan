@@ -1,5 +1,5 @@
 ---
-title: "STAA 566 HW4"
+title: "STAA 566 HW2"
 author: "Ryan Miller"
 output: html_document
 knit: (function(input_file, encoding) {
@@ -24,13 +24,15 @@ I chose this data for several reasons. First, it is in
 HDF5 format, which I've never used in R before. Second, it required some signal processing
 which I've also never done in R before. Third, I enjoy Physics and I thought this was
 a cool project; it was challenging to get the data in and processed in R, and gave me
-a change to learn new skills in addition to the dynamic plotting.
+a chance to learn new skills in addition to the dynamic plotting.
 
 The code will automatically download all the data from the website. I may also use
 this homework in the shiny project (HW4), so any feedback on improvements is appreciated.
 
 The reference section at the bottom has more information, and is where the comments about
-the figures come from.
+the figures come from. Ultimately, it was a project I wanted to do, and I'm hoping to
+convey the signal processing process, and, in the end, how well the General Relativity
+theory aligns with the observation.
 
 ```{r, echo = FALSE, message = FALSE}
 ## Load required libraries
@@ -40,7 +42,6 @@ library(  pracma   )
 library(    psd    )
 library(  signal   )
 library( tidyverse )
-library(  viridis  )
 
 ## Clear function for ease (by default keeps all functions)
 # Optional input E - character array of exceptions
