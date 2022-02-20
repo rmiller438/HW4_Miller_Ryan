@@ -38,6 +38,7 @@ library(   hdf5r   )
 library(  plotly   )
 library(  pracma   )
 library(    psd    )
+library(  signal   )
 library( tidyverse )
 library(  viridis  )
 
@@ -105,6 +106,8 @@ dt2       <- time[2] - time[1]; if( dt != dt2 ){ dt = dt2 }
 ## Get the strain values for both detectors
 strain.h1 <- h1.5[['/strain/Strain']][]
 strain.l1 <- l1.5[['/strain/Strain']][]
+strain.nr <- nrel$X2
+time.nr   <- nrel$X1
 
 ```
 ```{r, echo = FALSE, fig.align = 'center'}
@@ -112,7 +115,8 @@ strain.l1 <- l1.5[['/strain/Strain']][]
 ## Recreate HW2 (raw signal plot)
 t.event <- 1126259462.422
 t.off   <- 5
-idx <- which( time >= t.event - t.off & time < t.event + t.off )
+idx     <- which( time >= t.event - t.off & time < t.event + t.off )
+idx   <- which( time >= t.event - 0.10 & time < t.event + 0.05 )
 
 ## Set up the plotly functions
 pd.raw <- data.frame( L1 = strain.l1[ idx ], H1 = strain.h1[ idx ],
@@ -143,15 +147,13 @@ if( ! ( length( strain.h1 ) - length( strain.l1 ) ) )
 if( EVEN )
 # Even
 {
-    pos.freqs <- seq( from = 0, to = ( N / 2 - 1 ) / ( dt * N ), length.out = N/2)
-    neg.freqs <- seq( from = -N/2 / (dt*N), to = -1 / (dt*N), length.out = N/2)
-    #freqs     <- seq( from = 0, to = 1 / (2*dt), length.out = floor( N/2 ) + 1 )
-}
+    pos.freqs <- seq( from = 0, to = ( N / 2 ) - 1, by = 1 ) / ( dt * N )
+    neg.freqs <- seq( from = -N/2, to = -1, by = 1 ) / ( dt * N )
+} else
 # Odd
 {
-    pos.freqs <- seq( from = 0, to = ( (N-1)/2 / (dt*N) ), length.out = N/2 )
-    neg.freqs <- seq( from = -((N-1)/2 / (dt*N)), to = -1 / (dt*N), length.out = N/2 )
-    #freqs     <- seq( from = 0, to = ( (N-1)/2 ) / (dt*N), length.out = floor( N/2 ) + 1 )
+    pos.freqs <- seq( from = 0, to = (N-1) / 2, by = 1 ) / ( dt * N )
+    neg.freqs <- seq( from = -(N-1) / 2, to = -1, by = 1 ) / ( dt * N )
 }
 freqs      <- c( pos.freqs, neg.freqs )
 
@@ -166,13 +168,19 @@ white.l1.f <- fft( strain.l1 ) / div
 white.l1   <- Re( fft( white.l1.f, inverse = TRUE ) / N )
 
 ## Also have to do this for the relativistic model
-# TODO: You are here.
+n.nr       <- length( strain.nr ) # [1] 2769 <== Odd
+p.freq     <- seq( from = 0, to = (n.nr-1) / 2, by = 1 ) / ( dt * n.nr )
+n.freq     <- seq( from = -(n.nr-1) / 2, to = -1, by = 1 ) / ( dt * n.nr )
+freq       <- c( p.freq, n.freq )
+div        <-  sqrt( pracma::interp1( psd.h1$freq, psd.h1$spec, abs(freq) ) / dt / 2 )
+white.nr.f <- fft( strain.nr ) / div
+white.nr   <- Re( fft( white.nr.f, inverse = TRUE ) / N )
 
 # Shift by mean so they are both around zero, something. This is normally
 # handled by the whitening process with Real-FFT's, which are not implemented in R.
 white.h1 <- white.h1 - mean( white.h1 )
 white.l1 <- white.l1 - mean( white.l1 )
-# TODO: Also do for relativistic model
+white.nr <- white.nr - mean( white.nr )
 
 ```
 ```{r, echo = FALSE}
@@ -188,6 +196,39 @@ h.white <- plot_ly( pd.white, x = ~Time ) %>%
            yaxis = list( title = 'Whitened Strain' ) )
 
 h.white
+
+## Plot the whitened NR waveform also (Just as a sanity check)
+pd.nrWhite <- data.frame( NRwave = white.nr, Time = time.nr )
+h.nr.white <- ggplot( pd.nrWhite, aes( x = Time, y = NRwave ) ) +
+    geom_line( col = 'red', lwd = 1) + theme_minimal()
+h.nr.white
+```
+```{r}
+
+## Bandpass the data to remove the high frequency noise
+filt.coef  <- signal::butter( n = 4, W = c( 20 * 2 / fs, 300 * 2 / fs ), type = 'pass' )
+whitebp.h1 <- signal::filtfilt( filt.coef, white.h1 )
+whitebp.l1 <- signal::filtfilt( filt.coef, white.l1 )
+whitebp.nr <- signal::filtfilt( filt.coef, white.nr )
+
+## Invert and shift L1 sensor by 0.007
+shift    <- as.integer( 0.007 * fs )
+shift.l1 <- -c( tail( whitebp.l1, shift ), head( whitebp.l1, -shift ) )
+```
+```{r}
+
+## Plot the final signals
+pd.whitebp <- data.frame( L1 = shift.l1[ idx ], H1 = whitebp.h1[ idx ],
+                     Time = time[ idx ] - t.event )
+h.whitebp <- plot_ly( pd.whitebp, x = ~Time ) %>%
+    add_lines( y = ~L1, name = 'L1' ) %>%
+    add_lines( y = ~H1, name = 'H1' ) %>% rangeslider() %>% layout( hovermode = 'x' ) %>%
+    layout( title = 'LIGO Whitened Strain Near GW150914',
+           xaxis = list( title = 'Time (s) since GW150914' ),
+           yaxis = list( title = 'Whitened Strain' ) )
+
+h.whitebp
+
 ```
 ```{r, echo = FALSE}
 
