@@ -72,7 +72,7 @@ clear( )
 ## Caution: Downloading data takes may take some time. Recommend that you only do this
 ## once.
 #########################################################################################
-if( !exists( 'h1.5' ) | !exists( 'l1.5' )  | !exists( 'nrel' ) )
+if( !exists( 'h1.5' ) || !exists( 'l1.5' )  || !exists( 'nrel' ) )
 {
     ## Get strain data from H1 detector
     h1.file.loc  <- 'https://losc.ligo.org/s/events/GW150914/H-H1_LOSC_4_V1-1126259446-32.hdf5'
