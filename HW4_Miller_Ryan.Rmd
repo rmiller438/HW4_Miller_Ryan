@@ -1,5 +1,5 @@
 ---
-title: "STAA 566 HW2"
+title: "STAA 566 HW4"
 author: "Ryan Miller"
 output: html_document
 knit: (function(input_file, encoding) {
