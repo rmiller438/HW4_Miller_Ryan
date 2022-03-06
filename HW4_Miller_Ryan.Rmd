@@ -8,6 +8,122 @@ knit: (function(input_file, encoding) {
  encoding=encoding,
  output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
 ---
+```{r, echo = FALSE, message = FALSE}
+##########################################################################################
+## Start Setup
+##########################################################################################
+## Load required libraries
+library( gridExtra  )
+library( tidyverse  )
+library(  viridis   )
+library( kableExtra )
+library( gapminder ) # TODO: Remember to uninstall
+library( sparkline ) # TODO: Remember to uninstall
+## Clear function for ease (by default keeps all functions)
+# Optional input E - character array of exceptions
+# Optional input P - character array of inclusions
+clear <- function( all = FALSE, E = "", P = "" )
+{
+    # By default don't clear the loaded data unless intentionally cleared
+    if( ! all ){ E <- c( E, 'api.key' ) }
+
+    # Get list of functions and exclude anything in E
+    l <- setdiff( ls(envir=parent.frame()), c( lsf.str(envir=parent.frame()), E ) )
+
+    # Add P to the list.
+    if( all( P != "" ) ){ l <- c( l, P ) }
+
+    # Remove the stuff
+    rm( list = l, envir = parent.frame() )
+}
+
+## Clear things
+clear( )
+
+##########################################################################################
+## End Setup
+##########################################################################################
+```
+The following table presents life expectancy data for 142 countries from 1952 to 2007.
+
+Each country has a trend plot, which includes the life expectancy from 1952 to 2007 in
+five year increments. In addition, each country has the average life expectancy across the
+entire period, the life expectancy in the first year, and the life expectancy in the last
+year.
+
+The trend plots include a tooltip so that when you hover, you get the year and life
+expectancy value associated with it. I thought this was necessary to make the trend plots
+worth while.
+
+The last column includes a tool tip which is the percent change in life expectancy from
+the first year (1952) to the last year (2007). I thought this was an easy way to get some
+more useful information out of the table.
+
+This table shows a lot of information in a very succinct way and allows you to
+see trends across the time span as well as over all summary data. I find it interesting to
+see the impacts of historical events.
+
+The data comes from the `gapminder` package.
+
+```{r, echo = FALSE, results = 'hide'}
+## Calculate the average life expectancy over the time frame
+avgLifeExp <- gapminder %>% group_by( country ) %>%
+    summarize( avgLifeExp = mean( lifeExp ) )
+
+## Some other useful information
+years      <- seq( 1952, 2007, by = 5 )
+#  [1] 1952 1957 1962 1967 1972 1977 1982 1987 1992 1997 2002 2007
+nPeriod    <- length( years )
+# [1] 12
+years <- as.integer( years )
+```
+```{r, echo = FALSE}
+
+## Create the trend plots
+sparkline( 0 )
+# Add a column
+avgLifeExp <- avgLifeExp %>% mutate( plt_le = NA )
+# Generate plots
+for( i in levels( avgLifeExp$country ) )
+{
+    lifeExp <- gapminder %>% filter( country == i ) %>% pull( lifeExp )
+    avgLifeExp[ which( avgLifeExp$country == i ), 'plt_le' ] <-
+        spk_chr( lifeExp, xvalues = years,
+                numberDigitGroupSep='', tooltipFormat = '{{x}}: {{y}}' )
+}
+```
+```{r, echo = FALSE}
+
+## Add the beginning and end year
+DIGITS = 2
+for( i in levels( avgLifeExp$country ) )
+{
+    fy <- unlist( gapminder %>% filter( year == min( years ) ) %>%
+        dplyr::select( lifeExp ) )
+    ly <- unlist( gapminder %>% filter( year == max( years ) ) %>%
+        dplyr::select( lifeExp ) )
+
+    p <- (ly - fy) / fy * 100
+    avgLifeExp$firstYear <- fy
+    avgLifeExp$lastYear  <- cell_spec( ly, tooltip = sprintf( '%0.2f%%', round(p, DIGITS)) )
+}
+
+## Order the table how I want
+avgLifeExp <- avgLifeExp %>% dplyr::select( country, plt_le, avgLifeExp, firstYear,
+                                           lastYear )
+```
+```{r, echo = FALSE}
+
+## Generate the table
+tableFull <- kbl( avgLifeExp, escape = FALSE,
+    col.names = c('Country', 'Life Expectancy Trend', 'Avg. Life Expectancey',
+                 sprintf('Life Exp. in %d', min(years)),
+                 sprintf('Life Exp. in %d', max(years)) ),
+    digits = DIGITS, align = 'c' ) %>%
+kable_styling( fixed_thead = TRUE )
+
+tableFull
+```
 
 ## Code
 
