@@ -17,8 +17,9 @@ library( gridExtra  )
 library( tidyverse  )
 library(  viridis   )
 library( kableExtra )
-library( gapminder ) # TODO: Remember to uninstall
-library( sparkline ) # TODO: Remember to uninstall
+library( gapminder  )
+library( sparkline  )
+
 ## Clear function for ease (by default keeps all functions)
 # Optional input E - character array of exceptions
 # Optional input P - character array of inclusions
